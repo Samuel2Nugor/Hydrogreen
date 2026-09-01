@@ -1,4 +1,4 @@
 # MicroHydros
 
-## Utveckleing av en IoT- och embeddedprototyp
+## Utveckling av en IoT- och embeddedprototyp
 
