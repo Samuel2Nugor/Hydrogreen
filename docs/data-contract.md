@@ -8,7 +8,7 @@ Draft — subject to team review and approval.
 
 This document defines the MQTT topics and JSON message formats used by the MicroHydros system.
 
-The contract allows the ESP32-S3, Mosquitto, Python telemetry service, Node-RED and future services to be developed independently while using the same field names, data types and units.
+The contract allows the ESP32-S3, Mosquitto, Node-RED, InfluxDB and future services to be developed independently while using the same field names, data types and units.
 
 Messages that do not follow this contract must not be published to validated telemetry topics.
 
@@ -49,13 +49,15 @@ microhydros/v1/devices/esp32s3-01/telemetry/validated/water_temperature
 ## Topic responsibilities
 
 | Topic suffix | Publisher | Subscriber | Purpose |
-| ------------ | --------- | ---------- | ------- |
-| `telemetry/raw` | ESP32-S3 | Python telemetry service | Carries one combined message containing sensor readings and statuses |
-| `telemetry/validated/{measurement}` | Python telemetry service | Node-RED and future services | Carries one measurement that passed validation |
-| `telemetry/rejected` | Python telemetry service | Node-RED diagnostic flow | Reports messages or measurements that failed validation |
+|---|---|---|---|
+| `telemetry/raw` | ESP32-S3 or telemetry simulator | Node-RED | Carries one combined message containing sensor readings and statuses |
+| `telemetry/validated/{measurement}` | Node-RED | Node-RED storage flow and future services | Carries one measurement that passed validation |
+| `telemetry/rejected` | Node-RED | Node-RED diagnostic flow | Reports messages or measurements that failed validation |
 | `status` | ESP32-S3 or Mosquitto LWT | Node-RED | Reports whether the device is online or offline |
 
-The Python telemetry service subscribes to raw telemetry from every compatible device using:
+After validation, Node-RED writes valid measurements to InfluxDB for historical storage.
+
+Node-RED subscribes to raw telemetry from every compatible device using:
 
 ```text
 microhydros/v1/devices/+/telemetry/raw
@@ -69,11 +71,34 @@ microhydros/v1/devices/+/telemetry/validated/+
 
 The first `+` wildcard represents one device identifier. The second represents one measurement name.
 
+## Development and physical device identifiers
+
+The telemetry simulator and physical ESP32-S3 use the same MQTT topic structure and payload contract. They are distinguished by their device identifiers.
+
+| Device | Device identifier |
+|---|---|
+| Telemetry simulator | `simulator-01` |
+| Physical ESP32-S3 | `esp32s3-01` |
+
+Example development topic:
+
+```text
+microhydros/v1/devices/simulator-01/telemetry/raw
+```
+
+Example physical-device topic:
+
+```text
+microhydros/v1/devices/esp32s3-01/telemetry/raw
+```
+
+The `device_id` inside the JSON payload must match the device identifier in the MQTT topic.
+
 ## Raw telemetry contract
 
 The ESP32-S3 publishes one combined raw telemetry message every 30 seconds.
 
-Each measurement is later validated independently by the Python telemetry service. A failed measurement must not prevent other valid measurements from being published.
+Each measurement is later validated independently by Node-RED. A failed measurement must not prevent other valid measurements from being published.
 
 **Topic:**
 
@@ -174,7 +199,7 @@ If a sensor status is not `ok`, its affected measurement value must be `null`.
 
 ## Validated measurement contract
 
-The Python telemetry service validates every measurement independently. Each valid measurement is published as a separate MQTT message.
+Node-RED validates every measurement independently. Each valid measurement is published as a separate MQTT message.
 
 A failed measurement does not prevent other valid measurements from being published.
 
@@ -235,7 +260,7 @@ microhydros/v1/devices/esp32s3-01/telemetry/validated/water_temperature
 | `boot_id` | String | Yes | Identifier of the current device boot session |
 | `sequence` | Integer | Yes | Sequence number from the original raw message |
 | `uptime_ms` | Integer | Yes | Device uptime from the original raw message |
-| `timestamp` | String | Yes | UTC reception time assigned by the Python telemetry service |
+| `timestamp` | String | Yes | UTC reception time assigned by Node-RED |
 | `measurement` | String | Yes | Name of the validated measurement |
 | `value` | Number | Yes | Validated measurement value |
 | `unit` | String | Yes | Unit associated with the measurement |
@@ -243,7 +268,7 @@ microhydros/v1/devices/esp32s3-01/telemetry/validated/water_temperature
 
 ### Publication rules
 
-The Python telemetry service publishes a validated measurement only when:
+Node-RED publishes a validated measurement only when:
 
 - The corresponding raw measurement field exists.
 - Its value is a finite number.
@@ -253,13 +278,13 @@ The Python telemetry service publishes a validated measurement only when:
 - The schema version is supported.
 - The measurement name in the payload matches the final topic segment.
 
-The Python telemetry service assigns one timestamp to the raw message before splitting it. All valid measurements originating from the same raw message therefore receive the same timestamp, `boot_id` and `sequence`.
+Node-RED assigns one timestamp to the raw message before splitting it. All valid measurements originating from the same raw message therefore receive the same timestamp, `boot_id` and `sequence`.
 
 Invalid values, `null`, `NaN` and infinity must never appear on a validated topic.
 
 ## Rejected telemetry contract
 
-The Python telemetry service publishes validation failures to the rejected topic.
+Node-RED publishes validation failures to the rejected topic.
 
 **Topic:**
 
@@ -342,11 +367,11 @@ Other valid measurements from the same raw message may still be published.
 | `device_id` | String | Yes | Device identifier extracted from the MQTT topic |
 | `boot_id` | String | Measurement rejection only | Source device boot session |
 | `sequence` | Integer | Measurement rejection only | Sequence number of the raw message |
-| `timestamp` | String | Yes | UTC rejection time assigned by the Python telemetry service |
+| `timestamp` | String | Yes | UTC rejection time assigned by Node-RED |
 | `rejection_scope` | String | Yes | Either `message` or `measurement` |
 | `measurement` | String | Measurement rejection only | Measurement that failed validation |
 | `sensor_id` | String | Measurement rejection only | Sensor associated with the failure |
-| `received_value` | Any JSON type | Measurement rejection only | Value received by the Python telemetry service |
+| `received_value` | Any JSON type | Measurement rejection only | Value received by Node-RED |
 | `reason_code` | String | Yes | Machine-readable reason for rejection |
 | `description` | String | Yes | Human-readable explanation |
 
@@ -444,7 +469,7 @@ For a planned disconnection, the ESP32-S3 should publish the offline message bef
 - Telemetry must not be retained, even though device status is retained.
 - Status messages must not contain credentials or other secrets.
 
-Node-RED records when it receives each status message. The Last Will payload does not contain a timestamp because it is prepared before an unexpected disconnection occurs.
+Node-RED assigns the reception time and writes the device status to InfluxDB. The Last Will payload does not contain a timestamp because it is prepared before an unexpected disconnection occurs.
 
 ## General rules
 
