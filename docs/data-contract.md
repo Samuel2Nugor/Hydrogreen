@@ -71,6 +71,29 @@ microhydros/v1/devices/+/telemetry/validated/+
 
 The first `+` wildcard represents one device identifier. The second represents one measurement name.
 
+## Development and physical device identifiers
+
+The telemetry simulator and physical ESP32-S3 use the same MQTT topic structure and payload contract. They are distinguished by their device identifiers.
+
+| Device | Device identifier |
+|---|---|
+| Telemetry simulator | `simulator-01` |
+| Physical ESP32-S3 | `esp32s3-01` |
+
+Example development topic:
+
+```text
+microhydros/v1/devices/simulator-01/telemetry/raw
+```
+
+Example physical-device topic:
+
+```text
+microhydros/v1/devices/esp32s3-01/telemetry/raw
+```
+
+The `device_id` inside the JSON payload must match the device identifier in the MQTT topic.
+
 ## Raw telemetry contract
 
 The ESP32-S3 publishes one combined raw telemetry message every 30 seconds.
