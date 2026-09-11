@@ -8,3 +8,6 @@
 # Generated build output
 build/
 dist/
+
+#Local Docker secrets
+.env
