@@ -116,5 +116,73 @@
                 "531fe54798a78aec"
             ]
         ]
+    },
+    {
+        "id": "c2769de7f73ebaf2",
+        "type": "mqtt in",
+        "z": "f9d2236dae306b90",
+        "name": "Validated telemetry",
+        "topic": "microhydros/v1/devices/+/telemetry/validated/+",
+        "qos": "1",
+        "datatype": "auto-detect",
+        "broker": "6fcdce2f11ec0ec3",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 210,
+        "y": 680,
+        "wires": [
+            [
+                "7a019e2faf2d849c"
+            ]
+        ]
+    },
+    {
+        "id": "7a019e2faf2d849c",
+        "type": "json",
+        "z": "f9d2236dae306b90",
+        "name": "Parse validated JSON",
+        "property": "payload",
+        "action": "obj",
+        "pretty": false,
+        "x": 520,
+        "y": 680,
+        "wires": [
+            [
+                "531fe54798a78aec"
+            ]
+        ]
+    },
+    {
+        "id": "6fcdce2f11ec0ec3",
+        "type": "mqtt-broker",
+        "name": "Local Mosquitto",
+        "broker": "mosquitto",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
     }
 ]

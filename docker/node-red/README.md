@@ -133,9 +133,7 @@ Increase the range, for example to `-24h`, when querying older test data.
 
 The test-data nodes are only for independent development.
 
-When the validation flow is ready, its validated measurement output should connect to `Build InfluxDB write`. Each incoming `msg.payload` must follow the validated measurement contract.
-
-Rejected messages must not connect to the storage flow and must not be written into the normal `sensor_reading` measurement.
+The included MQTT input subscribes to `microhydros/v1/devices/+/telemetry/validated/+` using the Mosquitto service at `mosquitto:1883`. Rejected topics are not subscribed to and therefore cannot enter the normal `sensor_reading` measurement.
 
 ## Current limitations
 
