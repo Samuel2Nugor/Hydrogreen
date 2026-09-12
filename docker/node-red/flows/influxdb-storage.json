@@ -1,0 +1,120 @@
+[
+    {
+        "id": "f9d2236dae306b90",
+        "type": "tab",
+        "label": "InfluxDB storage",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "3c2f31b4e1181698",
+        "type": "inject",
+        "z": "f9d2236dae306b90",
+        "name": "Test water temperature",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 140,
+        "y": 200,
+        "wires": [
+            [
+                "76c5c9d16c02f80b"
+            ]
+        ]
+    },
+    {
+        "id": "531fe54798a78aec",
+        "type": "function",
+        "z": "f9d2236dae306b90",
+        "name": "Build InfluxDB write",
+        "func": "const reading = msg.payload;\n\nconst allowedMeasurements = [\n    \"internal_temperature\",\n    \"internal_humidity\",\n    \"external_temperature\",\n    \"water_temperature\"\n];\n\nif (!allowedMeasurements.includes(reading.measurement)) {\n    node.error(\"Unsupported measurement type\", msg);\n    return null;\n}\n\nif (!Number.isFinite(reading.value)) {\n    node.error(\"Measurement value is not finite\", msg);\n    return null;\n}\n\nconst timestamp = Date.parse(reading.timestamp);\n\nif (!Number.isFinite(timestamp)) {\n    node.error(\"Invalid timestamp\", msg);\n    return null;\n}\n\nfunction escapeTag(value) {\n    return String(value)\n        .replace(/\\\\/g, \"\\\\\\\\\")\n        .replace(/ /g, \"\\\\ \")\n        .replace(/,/g, \"\\\\,\")\n        .replace(/=/g, \"\\\\=\");\n}\n\nfunction escapeString(value) {\n    return String(value)\n        .replace(/\\\\/g, \"\\\\\\\\\")\n        .replace(/\"/g, '\\\\\"');\n}\n\nmsg.method = \"POST\";\nmsg.url =\n    `${env.get(\"INFLUXDB_URL\")}/api/v2/write` +\n    `?org=${encodeURIComponent(env.get(\"INFLUXDB_ORG\"))}` +\n    `&bucket=${encodeURIComponent(env.get(\"INFLUXDB_BUCKET\"))}` +\n    `&precision=ms`;\n\nmsg.headers = {\n    Authorization: `Token ${env.get(\"INFLUXDB_TOKEN\")}`,\n    \"Content-Type\": \"text/plain; charset=utf-8\"\n};\n\nmsg.payload =\n    `sensor_reading` +\n    `,device_id=${escapeTag(reading.device_id)}` +\n    `,measurement_type=${escapeTag(reading.measurement)}` +\n    `,sensor_id=${escapeTag(reading.sensor_id)}` +\n    `,unit=${escapeTag(reading.unit)}` +\n    ` value=${reading.value}` +\n    `,schema_version=${reading.schema_version}i` +\n    `,sequence=${reading.sequence}i` +\n    `,uptime_ms=${reading.uptime_ms}i` +\n    `,boot_id=\"${escapeString(reading.boot_id)}\"` +\n    ` ${timestamp}`;\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 450,
+        "y": 440,
+        "wires": [
+            [
+                "b9829e4fe5eba090"
+            ]
+        ]
+    },
+    {
+        "id": "b9829e4fe5eba090",
+        "type": "http request",
+        "z": "f9d2236dae306b90",
+        "name": "InfluxDB write",
+        "method": "use",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 720,
+        "y": 420,
+        "wires": [
+            [
+                "76fc698246dc6137"
+            ]
+        ]
+    },
+    {
+        "id": "76fc698246dc6137",
+        "type": "debug",
+        "z": "f9d2236dae306b90",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "statusCode",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1020,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "76c5c9d16c02f80b",
+        "type": "function",
+        "z": "f9d2236dae306b90",
+        "name": "Create four test measurements",
+        "func": "const common = {\n    schema_version: 1,\n    device_id: \"simulator-01\",\n    boot_id: \"storage-test\",\n    sequence: 2,\n    uptime_ms: 2000,\n    timestamp: new Date().toISOString()\n};\n\nconst measurements = [\n    {\n        measurement: \"internal_temperature\",\n        value: 23.5,\n        unit: \"celsius\",\n        sensor_id: \"internal_sht31\"\n    },\n    {\n        measurement: \"internal_humidity\",\n        value: 55.2,\n        unit: \"percent_rh\",\n        sensor_id: \"internal_sht31\"\n    },\n    {\n        measurement: \"external_temperature\",\n        value: 18.4,\n        unit: \"celsius\",\n        sensor_id: \"external_sht31\"\n    },\n    {\n        measurement: \"water_temperature\",\n        value: 20.7,\n        unit: \"celsius\",\n        sensor_id: \"water_ds18b20\"\n    }\n];\n\nfor (const measurement of measurements) {\n    node.send({\n        payload: {\n            ...common,\n            ...measurement\n        }\n    });\n}\n\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 450,
+        "y": 200,
+        "wires": [
+            [
+                "531fe54798a78aec"
+            ]
+        ]
+    }
+]
