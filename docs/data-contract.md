@@ -132,7 +132,7 @@ microhydros/v1/devices/{device_id}/telemetry/raw
   },
   "sensor_status": {
     "internal_sht31": "ok",
-    "external_sht31": "ok",
+    "external_ds18b20": "ok",
     "water_ds18b20": "ok"
   }
 }
@@ -223,7 +223,7 @@ microhydros/v1/devices/{device_id}/telemetry/validated/{measurement}
 | ----------- | ------------- | ---- |
 | `internal_temperature` | `internal_sht31` | `celsius` |
 | `internal_humidity` | `internal_sht31` | `percent_rh` |
-| `external_temperature` | `external_sht31` | `celsius` |
+| `external_temperature` | `external_ds18b20` | `celsius` |
 | `water_temperature` | `water_ds18b20` | `celsius` |
 
 ### Example validated measurement
@@ -352,7 +352,7 @@ Other valid measurements from the same raw message may still be published.
   "timestamp": "2026-09-08T10:16:00Z",
   "rejection_scope": "measurement",
   "measurement": "external_temperature",
-  "sensor_id": "external_sht31",
+  "sensor_id": "external_ds18b20",
   "received_value": null,
   "reason_code": "sensor_not_detected",
   "description": "The external SHT31 sensor could not be detected"
