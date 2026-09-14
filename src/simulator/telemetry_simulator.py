@@ -32,7 +32,7 @@ try:
             },
             "sensor_status": {
                 "internal_sht31": "ok",
-                "external_sht31": "ok",
+                "external_ds18b20": "ok",
                 "water_ds18b20": "ok"
             }
         }
