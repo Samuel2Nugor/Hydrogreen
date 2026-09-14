@@ -14,21 +14,21 @@ This Docker Compose environment runs the backend services required by the MicroH
 Applications running directly on the laptop use `localhost`. Containers communicate using their Docker service names. Docker-assigned IP addresses must not be placed in configuration because they can change.
 
 ## Requirements
+
+* Docker Engine
+* Docker Compose
+* Available ports `1883`, `1880`, `8086` and `3000`
+
 ## Tested container versions
 
 | Service | Docker image |
-|---|---|
+| ------- | ------------ |
 | Mosquitto | `eclipse-mosquitto:2` |
 | Node-RED | `nodered/node-red:5.0.7` |
 | InfluxDB | `influxdb:2.9.1` |
 | Grafana | `grafana/grafana:13.2.1` |
 
 Node-RED, InfluxDB and Grafana use exact tested versions. Mosquitto uses the supported major-version tag because the running program version does not have a matching Docker image tag.
-
-
-* Docker Engine
-* Docker Compose
-* Available ports `1883`, `1880`, `8086` and `3000`
 
 ## Local environment configuration
 
@@ -268,7 +268,7 @@ This repository provides the shared backend infrastructure. Team members can ext
 
 Expected additions include:
 
-* Exported Node-RED validation and storage flows
+* Node-RED validation and storage flows (exported to `docker/node-red/flows/` and version-controlled; both must be imported into Node-RED at `http://localhost:1880` for the full telemetry pipeline)
 * InfluxDB measurement structure
 * Grafana data-source provisioning
 * Grafana dashboard provisioning
@@ -286,4 +286,3 @@ Changes must follow the approved architecture and `docs/data-contract.md`.
 * Secrets and tokens must never be committed.
 
 These limitations must be reviewed before exposing the system outside a controlled local network.
-
