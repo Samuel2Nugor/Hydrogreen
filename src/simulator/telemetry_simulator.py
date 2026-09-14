@@ -15,7 +15,7 @@ sequence = 0  # räknar upp för varje skickat meddelande
 
 try:
     while True:
-        uptime_ms = sequence * 1000  # låtsas att 1 sequence = 1 sekund "igång"
+        uptime_ms = sequence * 30000  # 1 sequence = 30 sekunder "igång"
 
         payload = {
             "schema_version": 1,
@@ -41,7 +41,7 @@ try:
         print(f"Skickat sequence={sequence}")
 
         sequence += 1
-        time.sleep(1)  # vänta 1 sekund innan nästa meddelande
+        time.sleep(30)  # vänta 30 sekund innan nästa meddelande
 except KeyboardInterrupt:
     # körs när du trycker Ctrl+C i terminalen
     print("Avbryter...")
