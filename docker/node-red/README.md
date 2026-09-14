@@ -93,7 +93,7 @@ The InfluxDB point time is taken from the validated `timestamp` assigned by Node
 | ---------------------- | ---------------- | ------------ |
 | `internal_temperature` | `internal_sht31` | `celsius`    |
 | `internal_humidity`    | `internal_sht31` | `percent_rh` |
-| `external_temperature` | `external_sht31` | `celsius`    |
+| `external_temperature` | `external_ds18b20` | `celsius`    |
 | `water_temperature`    | `water_ds18b20`  | `celsius`    |
 
 ## Test the storage flow
