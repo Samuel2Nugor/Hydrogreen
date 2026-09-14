@@ -19,6 +19,11 @@ services:
       - "1880:1880"
     volumes:
       - node_red_data:/data
+    environment:
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_ORG: ${INFLUXDB_ORG}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
     networks:
       - microhydros-network
     depends_on:
