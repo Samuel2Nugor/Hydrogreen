@@ -17,9 +17,10 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <math.h>
+#include <inttypes.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -54,7 +55,7 @@ static const char *TAG_SENSOR = "sensor";
 #define ONEWIRE_GPIO            CONFIG_ONEWIRE_GPIO
 #define I2C_SDA                 CONFIG_I2C_SDA_GPIO
 #define I2C_SCL                 CONFIG_I2C_SCL_GPIO
-#define TELEMETRY_INTERVAL_MS   (CONFIG_TELEMETRY_INTERVAL_SEC * 1000ULL * 1000ULL)
+#define TELEMETRY_INTERVAL_US   (CONFIG_TELEMETRY_INTERVAL_SEC * 1000ULL * 1000ULL)
 
 /* ── SHT31 ────────────────────────────────────────────────────────────────── */
 #define SHT31_I2C_ADDR          0x44
@@ -66,19 +67,12 @@ static const char *TAG_SENSOR = "sensor";
 #define DS18B20_ROLE_WATER      0
 #define DS18B20_ROLE_EXTERNAL   1
 
-/* ── Plausibility ranges (data contract v1) ───────────────────────────────── */
-#define RANGE_INTERNAL_TEMP_MIN  -10.0f
-#define RANGE_INTERNAL_TEMP_MAX   60.0f
-#define RANGE_HUMIDITY_MIN         0.0f
-#define RANGE_HUMIDITY_MAX       100.0f
-#define RANGE_EXTERNAL_TEMP_MIN  -40.0f
-#define RANGE_EXTERNAL_TEMP_MAX   60.0f
-#define RANGE_WATER_TEMP_MIN       0.0f
-#define RANGE_WATER_TEMP_MAX      50.0f
+/* Plausibility ranges live in Node-RED (PLAUSIBLE_RANGES) — single source of
+ * truth. Firmware reports only transaction status (ok / read_error /
+ * not_detected); the validator rejects out-of-range values per field. */
 
 /* ── WiFi event group ─────────────────────────────────────────────────────── */
 #define WIFI_CONNECTED_BIT      BIT0
-#define WIFI_FAIL_BIT           BIT1
 static EventGroupHandle_t s_wifi_event_group;
 
 /* ── Global state ─────────────────────────────────────────────────────────── */
@@ -92,14 +86,14 @@ static i2c_master_dev_handle_t  s_sht31_dev = NULL;
 static bool                     s_sht31_ok = false;
 
 static onewire_bus_handle_t     s_ow_bus = NULL;
-static ds18b20_device_handle_t  s_ds18b20[DS18B20_MAX];
-static int                      s_ds18b20_count = 0;
+static ds18b20_device_handle_t  s_ds18b20[DS18B20_MAX];       /* indexed by ROLE */
+static bool                     s_ds18b20_present[DS18B20_MAX];
 
 /* ── Sensor reading result ────────────────────────────────────────────────── */
 typedef struct {
     float    value;
     bool     valid;
-    char     status[16];   /* "ok" | "read_error" | "not_detected" | "invalid_value" */
+    char     status[16];   /* "ok" | "read_error" | "not_detected" */
 } sensor_reading_t;
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -149,9 +143,13 @@ static void wifi_init(void)
     ESP_ERROR_CHECK(esp_wifi_start());
 
     ESP_LOGI(TAG_WIFI, "connecting to %s", WIFI_SSID);
-    xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdTRUE,
-                        portMAX_DELAY);
-    ESP_LOGI(TAG_WIFI, "connected");
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT,
+                                           pdFALSE, pdTRUE, pdMS_TO_TICKS(30000));
+    if (bits & WIFI_CONNECTED_BIT) {
+        ESP_LOGI(TAG_WIFI, "connected");
+    } else {
+        ESP_LOGW(TAG_WIFI, "not connected within 30s — continuing, will retry in background");
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -226,6 +224,18 @@ static void mqtt_init(void)
  * SHT31
  * ═════════════════════════════════════════════════════════════════════════ */
 
+static uint8_t sht31_crc8(const uint8_t *data, size_t len)
+{
+    uint8_t crc = 0xFF;
+    for (size_t i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (int b = 0; b < 8; b++) {
+            crc = (crc & 0x80) ? (uint8_t)((crc << 1) ^ 0x31) : (uint8_t)(crc << 1);
+        }
+    }
+    return crc;
+}
+
 static void sht31_init(void)
 {
     i2c_master_bus_config_t bus_cfg = {
@@ -265,8 +275,7 @@ static void sht31_init(void)
 
 static void sht31_read(sensor_reading_t *temp, sensor_reading_t *humidity)
 {
-    temp->valid     = false;
-    humidity->valid = false;
+    temp->valid = false;  humidity->valid = false;
     strlcpy(temp->status,     "not_detected", sizeof(temp->status));
     strlcpy(humidity->status, "not_detected", sizeof(humidity->status));
 
@@ -275,39 +284,28 @@ static void sht31_read(sensor_reading_t *temp, sensor_reading_t *humidity)
     uint8_t cmd[2] = {SHT31_CMD_MEAS_H, SHT31_CMD_MEAS_L};
     uint8_t buf[6];
 
-    esp_err_t err = i2c_master_transmit(s_sht31_dev, cmd, 2, 100);
-    if (err != ESP_OK) {
-        strlcpy(temp->status,     "read_error", sizeof(temp->status));
-        strlcpy(humidity->status, "read_error", sizeof(humidity->status));
-        return;
-    }
+    if (i2c_master_transmit(s_sht31_dev, cmd, 2, 100) != ESP_OK) goto read_error;
     vTaskDelay(pdMS_TO_TICKS(20));
-    err = i2c_master_receive(s_sht31_dev, buf, 6, 100);
-    if (err != ESP_OK) {
-        strlcpy(temp->status,     "read_error", sizeof(temp->status));
-        strlcpy(humidity->status, "read_error", sizeof(humidity->status));
-        return;
-    }
+    if (i2c_master_receive(s_sht31_dev, buf, 6, 100) != ESP_OK)  goto read_error;
+    if (sht31_crc8(&buf[0], 2) != buf[2] ||
+        sht31_crc8(&buf[3], 2) != buf[5])                        goto read_error;
 
     uint16_t raw_t = ((uint16_t)buf[0] << 8) | buf[1];
     uint16_t raw_h = ((uint16_t)buf[3] << 8) | buf[4];
 
+    /* Transaction + CRC ok → both channels "ok". Plausibility is the
+     * validator's job. Folding it in here would let an implausible temperature
+     * reject a valid humidity reading (they share one sensor_status field). */
     temp->value     = -45.0f + 175.0f * raw_t / 65535.0f;
     humidity->value = 100.0f * raw_h / 65535.0f;
+    temp->valid = true;  humidity->valid = true;
+    strlcpy(temp->status,     "ok", sizeof(temp->status));
+    strlcpy(humidity->status, "ok", sizeof(humidity->status));
+    return;
 
-    if (temp->value >= RANGE_INTERNAL_TEMP_MIN && temp->value <= RANGE_INTERNAL_TEMP_MAX) {
-        temp->valid = true;
-        strlcpy(temp->status, "ok", sizeof(temp->status));
-    } else {
-        strlcpy(temp->status, "invalid_value", sizeof(temp->status));
-    }
-
-    if (humidity->value >= RANGE_HUMIDITY_MIN && humidity->value <= RANGE_HUMIDITY_MAX) {
-        humidity->valid = true;
-        strlcpy(humidity->status, "ok", sizeof(humidity->status));
-    } else {
-        strlcpy(humidity->status, "invalid_value", sizeof(humidity->status));
-    }
+read_error:
+    strlcpy(temp->status,     "read_error", sizeof(temp->status));
+    strlcpy(humidity->status, "read_error", sizeof(humidity->status));
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -316,60 +314,113 @@ static void sht31_read(sensor_reading_t *temp, sensor_reading_t *humidity)
 
 static void ds18b20_init_sensors(void)
 {
+    for (int i = 0; i < DS18B20_MAX; i++) {
+        s_ds18b20[i] = NULL;
+        s_ds18b20_present[i] = false;
+    }
+
+    const uint64_t role_rom[DS18B20_MAX] = {
+        [DS18B20_ROLE_WATER]    = strtoull(CONFIG_DS18B20_WATER_ROM,    NULL, 16),
+        [DS18B20_ROLE_EXTERNAL] = strtoull(CONFIG_DS18B20_EXTERNAL_ROM, NULL, 16),
+    };
+
     onewire_bus_config_t bus_cfg = { .bus_gpio_num = ONEWIRE_GPIO };
     onewire_bus_rmt_config_t rmt_cfg = { .max_rx_bytes = 10 };
-    ESP_ERROR_CHECK(onewire_new_bus_rmt(&bus_cfg, &rmt_cfg, &s_ow_bus));
+    if (onewire_new_bus_rmt(&bus_cfg, &rmt_cfg, &s_ow_bus) != ESP_OK) {
+        ESP_LOGE(TAG_SENSOR, "1-Wire bus init failed — skipping DS18B20");
+        return;
+    }
 
     onewire_device_iter_handle_t iter;
-    ESP_ERROR_CHECK(onewire_new_device_iter(s_ow_bus, &iter));
+    if (onewire_new_device_iter(s_ow_bus, &iter) != ESP_OK) {
+        ESP_LOGE(TAG_SENSOR, "1-Wire iter create failed — skipping DS18B20");
+        return;
+    }
+
+    /* Discover every probe first, keeping handle + ROM together. */
+    struct { ds18b20_device_handle_t h; uint64_t rom; } found[DS18B20_MAX];
+    int found_count = 0;
 
     onewire_device_t device;
     esp_err_t err;
-    s_ds18b20_count = 0;
-
     do {
         err = onewire_device_iter_get_next(iter, &device);
-        if (err == ESP_OK && s_ds18b20_count < DS18B20_MAX) {
+        if (err == ESP_OK && found_count < DS18B20_MAX) {
             ds18b20_config_t ds_cfg = {};
-            if (ds18b20_new_device(&device, &ds_cfg,
-                                   &s_ds18b20[s_ds18b20_count]) == ESP_OK) {
-                ESP_LOGI(TAG_SENSOR, "DS18B20[%d] ROM: %016llX",
-                         s_ds18b20_count, device.address);
-                s_ds18b20_count++;
+            ds18b20_device_handle_t h;
+            if (ds18b20_new_device(&device, &ds_cfg, &h) == ESP_OK) {
+                found[found_count].h   = h;
+                found[found_count].rom = device.address;
+                ESP_LOGI(TAG_SENSOR, "DS18B20 discovered ROM: %016llX", device.address);
+                found_count++;
             }
         }
     } while (err != ESP_ERR_NOT_FOUND);
-
     onewire_del_device_iter(iter);
-    ESP_LOGI(TAG_SENSOR, "DS18B20 found: %d (need 2 — index 0=water, 1=external)",
-             s_ds18b20_count);
+
+    bool used[DS18B20_MAX] = { false };
+
+    /* Pass 1: assign pinned roles by matching ROM. */
+    for (int r = 0; r < DS18B20_MAX; r++) {
+        if (role_rom[r] == 0) continue;
+        for (int i = 0; i < found_count; i++) {
+            if (!used[i] && found[i].rom == role_rom[r]) {
+                s_ds18b20[r] = found[i].h;
+                s_ds18b20_present[r] = true;
+                used[i] = true;
+                break;
+            }
+        }
+        if (!s_ds18b20_present[r]) {
+            ESP_LOGW(TAG_SENSOR, "%s ROM %016llX not on bus",
+                     r == DS18B20_ROLE_WATER ? "water" : "external", role_rom[r]);
+        }
+    }
+
+    /* Pass 2: fallback for any unpinned/missing role — assign remaining probe
+     * by discovery order, but WARN loudly so a swap can't hide. */
+    for (int r = 0; r < DS18B20_MAX; r++) {
+        if (s_ds18b20_present[r]) continue;
+        for (int i = 0; i < found_count; i++) {
+            if (!used[i]) {
+                s_ds18b20[r] = found[i].h;
+                s_ds18b20_present[r] = true;
+                used[i] = true;
+                ESP_LOGW(TAG_SENSOR,
+                    "%s role UNPINNED — using ROM %016llX by order; "
+                    "set CONFIG_DS18B20_%s_ROM to pin it",
+                    r == DS18B20_ROLE_WATER ? "water" : "external", found[i].rom,
+                    r == DS18B20_ROLE_WATER ? "WATER" : "EXTERNAL");
+                break;
+            }
+        }
+    }
+
+    ESP_LOGI(TAG_SENSOR, "DS18B20 roles: water=%s external=%s",
+             s_ds18b20_present[DS18B20_ROLE_WATER]    ? "ready" : "MISSING",
+             s_ds18b20_present[DS18B20_ROLE_EXTERNAL] ? "ready" : "MISSING");
 }
 
-static void ds18b20_read_sensor(int index, sensor_reading_t *result,
-                                float range_min, float range_max)
+static void ds18b20_read_sensor(int role, sensor_reading_t *result)
 {
     result->valid = false;
     strlcpy(result->status, "not_detected", sizeof(result->status));
 
-    if (index >= s_ds18b20_count) return;
+    if (role < 0 || role >= DS18B20_MAX || !s_ds18b20_present[role]) return;
 
-    ds18b20_trigger_temperature_conversion(s_ds18b20[index]);
+    ds18b20_trigger_temperature_conversion(s_ds18b20[role]);
     vTaskDelay(pdMS_TO_TICKS(800));  /* DS18B20 max conversion time at 12-bit */
 
     float temp;
-    esp_err_t err = ds18b20_get_temperature(s_ds18b20[index], &temp);
-    if (err != ESP_OK) {
+    if (ds18b20_get_temperature(s_ds18b20[role], &temp) != ESP_OK) {
         strlcpy(result->status, "read_error", sizeof(result->status));
         return;
     }
 
+    /* Plausibility is the validator's job — emit the raw value. */
     result->value = temp;
-    if (temp >= range_min && temp <= range_max) {
-        result->valid = true;
-        strlcpy(result->status, "ok", sizeof(result->status));
-    } else {
-        strlcpy(result->status, "invalid_value", sizeof(result->status));
-    }
+    result->valid = true;
+    strlcpy(result->status, "ok", sizeof(result->status));
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -387,6 +438,10 @@ static void publish_telemetry(sensor_reading_t *internal_temp,
     }
 
     cJSON *root = cJSON_CreateObject();
+    if (!root) {
+        ESP_LOGE(TAG_MQTT, "cJSON alloc failed — skipping publish");
+        return;
+    }
     cJSON_AddNumberToObject(root, "schema_version", 1);
     cJSON_AddStringToObject(root, "device_id",      DEVICE_ID);
     cJSON_AddStringToObject(root, "boot_id",        s_boot_id);
@@ -421,6 +476,10 @@ static void publish_telemetry(sensor_reading_t *internal_temp,
 
     char *payload = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
+    if (!payload) {
+        ESP_LOGE(TAG_MQTT, "cJSON print failed — skipping publish");
+        return;
+    }
 
     char topic[80];
     snprintf(topic, sizeof(topic),
@@ -434,24 +493,38 @@ static void publish_telemetry(sensor_reading_t *internal_temp,
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * Telemetry timer callback
+ * Telemetry task — sensor work runs here, not in esp_timer callback,
+ * to avoid blocking the timer task with DS18B20 conversion delays (~1.6 s).
  * ═════════════════════════════════════════════════════════════════════════ */
+
+static TaskHandle_t s_telemetry_task = NULL;
+
+static void telemetry_task(void *arg)
+{
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        sensor_reading_t internal_temp, internal_hum, water_temp, external_temp;
+
+        sht31_read(&internal_temp, &internal_hum);
+        ds18b20_read_sensor(DS18B20_ROLE_WATER,    &water_temp);
+        ds18b20_read_sensor(DS18B20_ROLE_EXTERNAL, &external_temp);
+
+        ESP_LOGI(TAG_SENSOR, "internal_temp=%.2f(%s) internal_hum=%.1f(%s) water=%.2f(%s) external=%.2f(%s)",
+                 internal_temp.value,  internal_temp.status,
+                 internal_hum.value,   internal_hum.status,
+                 water_temp.value,     water_temp.status,
+                 external_temp.value,  external_temp.status);
+
+        publish_telemetry(&internal_temp, &internal_hum, &water_temp, &external_temp);
+    }
+}
 
 static void telemetry_timer_cb(void *arg)
 {
-    sensor_reading_t internal_temp, internal_hum, water_temp, external_temp;
-
-    sht31_read(&internal_temp, &internal_hum);
-    ds18b20_read_sensor(DS18B20_ROLE_WATER,    &water_temp,    RANGE_WATER_TEMP_MIN,    RANGE_WATER_TEMP_MAX);
-    ds18b20_read_sensor(DS18B20_ROLE_EXTERNAL, &external_temp, RANGE_EXTERNAL_TEMP_MIN, RANGE_EXTERNAL_TEMP_MAX);
-
-    ESP_LOGI(TAG_SENSOR, "internal_temp=%.2f(%s) internal_hum=%.1f(%s) water=%.2f(%s) external=%.2f(%s)",
-             internal_temp.value,  internal_temp.status,
-             internal_hum.value,   internal_hum.status,
-             water_temp.value,     water_temp.status,
-             external_temp.value,  external_temp.status);
-
-    publish_telemetry(&internal_temp, &internal_hum, &water_temp, &external_temp);
+    if (s_telemetry_task) {
+        xTaskNotifyGive(s_telemetry_task);
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -481,10 +554,16 @@ void app_main(void)
     wifi_init();
     mqtt_init();
 
-    /* Wait for MQTT connection before starting timer */
-    while (!s_mqtt_connected) {
+    /* Wait up to 60 s for MQTT — start timer regardless; client auto-reconnects */
+    for (int i = 0; i < 120 && !s_mqtt_connected; i++) {
         vTaskDelay(pdMS_TO_TICKS(500));
     }
+    if (!s_mqtt_connected) {
+        ESP_LOGW(TAG_MQTT, "not connected within 60s — continuing, will retry in background");
+    }
+
+    /* Sensor task — receives notify from timer, does the actual work */
+    xTaskCreate(telemetry_task, "telemetry", 4096, NULL, 5, &s_telemetry_task);
 
     /* Periodic telemetry timer */
     const esp_timer_create_args_t timer_args = {
@@ -493,9 +572,9 @@ void app_main(void)
     };
     esp_timer_handle_t timer;
     ESP_ERROR_CHECK(esp_timer_create(&timer_args, &timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(timer, TELEMETRY_INTERVAL_MS));
+    ESP_ERROR_CHECK(esp_timer_start_periodic(timer, TELEMETRY_INTERVAL_US));
 
-    /* Publish first reading immediately */
+    /* Trigger first reading immediately */
     telemetry_timer_cb(NULL);
 
     ESP_LOGI(TAG, "running — publishing every %d s", CONFIG_TELEMETRY_INTERVAL_SEC);

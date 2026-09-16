@@ -20,6 +20,14 @@ menu "MicroHydros Configuration"
         int "1-Wire GPIO pin"
         default 4
 
+    config DS18B20_WATER_ROM
+        string "DS18B20 water-probe ROM (16 hex chars, empty = auto)"
+        default ""
+
+    config DS18B20_EXTERNAL_ROM
+        string "DS18B20 external-probe ROM (16 hex chars, empty = auto)"
+        default ""
+
     config I2C_SDA_GPIO
         int "I2C SDA GPIO pin"
         default 8
