@@ -8,7 +8,7 @@ Draft — subject to team review and approval.
 
 This directory contains the ESP-IDF firmware for the MicroHydros sensor node. It reads sensors every 30 seconds and publishes one raw telemetry message over MQTT per `docs/data-contract.md`.
 
-Physical wiring, BOM and pinout live in `hardware/README.md`.
+Physical wiring, BOM and pinout live in `hardware/esp32s3/README.md`.
 
 ## Target
 
@@ -26,12 +26,12 @@ Physical wiring, BOM and pinout live in `hardware/README.md`.
 * USB cable and either a working `/dev/ttyACM0` or `/dev/ttyUSB0`
 * MicroHydros backend running (see `docker/README.md`) — the firmware publishes to it
 
-Component dependencies (`onewire_bus`, `ds18b20`) are pulled automatically by the ESP-IDF component manager from `firmware/idf_component.yml`.
+Component dependencies (`onewire_bus`, `ds18b20`) are pulled automatically by the ESP-IDF component manager from `firmware/esp32s3/idf_component.yml`.
 
 ## First-time setup
 
 ```bash
-cd firmware
+cd firmware/esp32s3
 idf.py set-target esp32s3          # required once per checkout
 ```
 
@@ -129,7 +129,7 @@ Plausibility checks are the validator's job (`docker/node-red/flows/mqtt-validat
 ## Layout
 
 ```
-firmware/
+firmware/esp32s3/
 ├── CMakeLists.txt          # project entry (idf.py hooks in here)
 ├── idf_component.yml       # component-manager deps (onewire_bus, ds18b20)
 ├── sdkconfig.defaults      # committed defaults
