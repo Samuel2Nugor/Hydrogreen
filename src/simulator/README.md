@@ -10,10 +10,26 @@ A development tool that imitates the ESP32-S3 by publishing repeated raw sensor 
 
 ## Setup
 
+Create a virtual environment:
+
+```bash
+python -m venv .venv
+```
+
+Activate it:
+
+```bash
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
+
+# macOS/Linux
+source .venv/bin/activate
+```
+
 Install the MQTT client library:
 
 ```bash
-pip install paho-mqtt
+pip install -r requirements.txt
 ```
 
 ## Run
