@@ -6,7 +6,7 @@ Draft — subject to team review and approval.
 
 ## Purpose
 
-This directory contains the ESP-IDF firmware for the MicroHydros sensor node. It reads sensors every 30 seconds and publishes one raw telemetry message over MQTT per `docs/data-contract.md`.
+This directory contains the ESP-IDF firmware for the MicroHydros sensor node. It reads sensors every 5 seconds and publishes one raw telemetry message over MQTT per `docs/data-contract.md`.
 
 Physical wiring, BOM and pinout live in `hardware/esp32s3/README.md`.
 
@@ -17,7 +17,7 @@ Physical wiring, BOM and pinout live in `hardware/esp32s3/README.md`.
 | MCU | ESP32-S3 DevKitC-1.1 |
 | Framework | ESP-IDF `>=5.1.0` |
 | Language | C |
-| Publish interval | 30 seconds |
+| Publish interval | 5 seconds |
 
 ## Requirements
 
@@ -56,7 +56,7 @@ Navigate to **MicroHydros Configuration** and set:
 | `DS18B20_EXTERNAL_ROM` | Pinned ROM (16 hex chars, empty = auto) | `""` |
 | `I2C_SDA_GPIO` | I2C data pin | `8` |
 | `I2C_SCL_GPIO` | I2C clock pin | `9` |
-| `TELEMETRY_INTERVAL_SEC` | Publish interval in seconds | `30` |
+| `TELEMETRY_INTERVAL_SEC` | Publish interval in seconds | `5` |
 
 Credentials are never committed. `sdkconfig` is `.gitignore`-d; only `sdkconfig.defaults` is versioned.
 

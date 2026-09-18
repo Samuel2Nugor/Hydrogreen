@@ -38,6 +38,6 @@ menu "MicroHydros Configuration"
 
     config TELEMETRY_INTERVAL_SEC
         int "Telemetry publish interval (seconds)"
-        default 30
+        default 5
 
 endmenu
