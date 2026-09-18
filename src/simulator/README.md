@@ -10,34 +10,38 @@ A development tool that imitates the ESP32-S3 by publishing repeated raw sensor 
 
 ## Setup
 
-Create a virtual environment:
+Create a virtual environment, then install the MQTT client library from `requirements.txt` (pins the exact version the team uses).
 
-```bash
-python -m venv .venv
-```
+**Windows:** use the `py` launcher rather than bare `python`/`pip` — Windows can hijack those commands with a Microsoft Store install stub even when Python is already installed, and `pip.exe` isn't always on PATH.
 
-Activate it:
-
-```bash
-# Windows (PowerShell)
+```powershell
+py -m venv .venv
 .venv\Scripts\Activate.ps1
-
-# macOS/Linux
-source .venv/bin/activate
+py -m pip install -r requirements.txt
 ```
 
-Install the MQTT client library:
+**macOS:** `python`/`pip` without a `3` usually don't exist at all — use `python3` (or `pip3`).
 
 ```bash
-pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
 ```
 
 ## Run
 
 From the repository root:
 
+**Windows:**
+
+```powershell
+py src/simulator/telemetry_simulator.py
+```
+
+**macOS:**
+
 ```bash
-python src/simulator/telemetry_simulator.py
+python3 src/simulator/telemetry_simulator.py
 ```
 
 The simulator connects to Mosquitto, then publishes one message every 30 seconds as device `simulator-01` to:
