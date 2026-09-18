@@ -10,7 +10,7 @@ menu "MicroHydros Configuration"
 
     config MQTT_BROKER_URL
         string "MQTT Broker URL"
-        default "mqtt://95.216.208.235:1883"
+        default "mqtt://95.216.208.235:1884"
 
     config DEVICE_ID
         string "Device ID"
