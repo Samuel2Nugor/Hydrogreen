@@ -42,7 +42,7 @@ pico_set_program_version(picoMqtt "0.1")
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(picoMqtt 0)
-pico_enable_stdio_usb(picoMqtt 0)
+pico_enable_stdio_usb(picoMqtt 1)
 
 # Add the standard library to the build
 target_link_libraries(picoMqtt
@@ -56,6 +56,7 @@ target_include_directories(picoMqtt PRIVATE
 # Add any user requested libraries
 target_link_libraries(picoMqtt 
         pico_cyw43_arch_lwip_poll
+        hardware_adc
         )
 
 pico_add_extra_outputs(picoMqtt)

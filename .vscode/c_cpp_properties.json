@@ -4,7 +4,7 @@
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${userHome}/.pico-sdk/sdk/2.2.0/**"
+                "${env:PICO_SDK_PATH}/**"
             ],
             "defines": [
                 "_DEBUG",
