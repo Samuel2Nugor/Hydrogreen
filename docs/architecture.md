@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft — subject to team review and approval.
+Draft â€” subject to team review and approval.
 
 ## Architecture overview
 
@@ -17,8 +17,8 @@ A telemetry simulator is used during development to imitate the ESP32-S3. It pub
 | Component           | Responsibility                                                                 | MVP              |
 | ------------------- | ------------------------------------------------------------------------------ | ---------------- |
 | Internal SHT31      | Measure internal air temperature and relative humidity                         | Yes              |
-| External SHT31      | Measure external air temperature                                               | Yes              |
-| DS18B20             | Measure water or nutrient-solution temperature                                 | Yes              |
+| External DS18B20    | Measure external air temperature                                               | Yes              |
+| Water DS18B20       | Measure water or nutrient-solution temperature                                 | Yes              |
 | ESP32-S3            | Read sensors, perform initial checks and publish raw MQTT telemetry            | Yes              |
 | Mosquitto           | Route MQTT messages between publishers and subscribers                         | Yes              |
 | Node-RED            | Validate, timestamp and separate measurements and write valid data to InfluxDB | Yes              |
@@ -33,11 +33,11 @@ The ESP32-S3 and demonstration laptop communicate through the same local network
 
 ```mermaid
 flowchart TD
-    Sensors["2 × SHT31 + DS18B20"]
+    Sensors["1 Ã— SHT31 + 2 Ã— DS18B20"]
     ESP["ESP32-S3 sensor node"]
     Simulator["Telemetry simulator"]
 
-    subgraph Laptop["Laptop — Docker Compose"]
+    subgraph Laptop["Laptop â€” Docker Compose"]
         MQTT["Mosquitto"]
         NodeRED["Node-RED validation"]
         InfluxDB["InfluxDB storage"]
@@ -57,16 +57,17 @@ The simulator is not part of the final deployed prototype. It is replaced by the
 
 ## Sensor connections
 
-The internal and external SHT31 sensors communicate with the ESP32-S3 using I²C. The DS18B20 communicates using 1-Wire.
+The internal SHT31 communicates with the ESP32-S3 using IÂ²C. The two DS18B20 sensors communicate using 1-Wire.
 
-The two SHT31 sensors must have unique I²C addresses. The intended mapping is:
+The internal SHT31 uses its default IÂ²C address. Both DS18B20 sensors share a single 1-Wire bus and are distinguished by their unique factory-programmed 64-bit ROM addresses. The intended mapping is:
 
-| Sensor         | Software identifier | Intended I²C address |
-| -------------- | ------------------- | -------------------- |
-| Internal SHT31 | `internal_sht31`    | `0x44`               |
-| External SHT31 | `external_sht31`    | `0x45`               |
+| Sensor           | Software identifier | Bus    | Address                |
+| ---------------- | ------------------- | ------ | ---------------------- |
+| Internal SHT31   | `internal_sht31`    | IÂ²C    | `0x44`                 |
+| External DS18B20 | `external_ds18b20`  | 1-Wire | ROM address (per unit) |
+| Water DS18B20    | `water_ds18b20`     | 1-Wire | ROM address (per unit) |
 
-The exact modules must be checked to confirm that address selection is supported. If both modules are fixed to the same address, separate I²C buses or an I²C multiplexer will be required.
+The ROM address of each DS18B20 must be read and recorded during setup so the firmware can map each physical sensor to the correct measurement (external air versus nutrient solution). Because the two DS18B20 units are otherwise identical, mixing up their ROM addresses would silently swap the external and water readings.
 
 ## Docker deployment
 
@@ -78,14 +79,14 @@ The backend services are managed using Docker Compose on the laptop.
 * Docker Compose files, Mosquitto configuration and reviewed Node-RED flow exports may be version controlled.
 * Passwords, tokens, `.env` files and other credentials must not be committed.
 
-Services inside Docker communicate using their Docker Compose service names. The ESP32-S3 connects to Mosquitto using the laptop’s local network IP address and port `1883`.
+Services inside Docker communicate using their Docker Compose service names. The ESP32-S3 connects to Mosquitto using the laptopâ€™s local network IP address and port `1883`.
 
 ## Measurement data flow
 
 1. The ESP32-S3 reads all three sensors every 5 seconds.
 2. It checks for sensor communication and conversion failures.
 3. It creates one raw JSON payload containing all four measurements, sensor statuses, device ID, boot ID, sequence number and uptime.
-4. It publishes the payload to the device’s raw MQTT topic using QoS 1.
+4. It publishes the payload to the deviceâ€™s raw MQTT topic using QoS 1.
 5. Node-RED subscribes to raw telemetry.
 6. Node-RED validates the common metadata and each measurement independently.
 7. Node-RED assigns one UTC timestamp to the measurement cycle.
@@ -206,7 +207,7 @@ If the ESP32-S3 disconnects unexpectedly, Mosquitto publishes its configured off
 For the final demonstration:
 
 * The ESP32-S3 and laptop must use the same local network.
-* The laptop’s local IP address must be configured in the ESP32-S3 firmware.
+* The laptopâ€™s local IP address must be configured in the ESP32-S3 firmware.
 * The firewall must allow the ESP32-S3 to reach MQTT port `1883`.
 * The complete Docker Compose environment must be started and checked before the demonstration.
 * Node-RED, InfluxDB and Grafana data must persist after container restarts.
