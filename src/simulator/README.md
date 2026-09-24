@@ -44,7 +44,7 @@ py src/simulator/telemetry_simulator.py
 python3 src/simulator/telemetry_simulator.py
 ```
 
-The simulator connects to Mosquitto, then publishes one message every 30 seconds as device `simulator-01` to:
+The simulator connects to Mosquitto, then publishes one message every 5 seconds as device `simulator-01` to:
 
 ```text
 microhydros/v1/devices/simulator-01/telemetry/raw
@@ -62,4 +62,4 @@ Open a second terminal and subscribe to the topic to confirm Mosquitto is receiv
 docker exec -it microhydros-mosquitto mosquitto_sub -t "microhydros/v1/devices/+/telemetry/raw"
 ```
 
-While the simulator is running, a new JSON message matching the data contract should appear in this terminal every 30 seconds.
+While the simulator is running, a new JSON message matching the data contract should appear in this terminal every 5 seconds.
