@@ -49,7 +49,7 @@ Navigate to **MicroHydros Configuration** and set:
 | ------ | ----------- | ------- |
 | `WIFI_SSID` | Wi-Fi SSID | `your_ssid` |
 | `WIFI_PASSWORD` | Wi-Fi password | `your_password` |
-| `MQTT_BROKER_URL` | Broker URL (see backend for port) | `mqtt://95.216.208.235:1883` |
+| `MQTT_BROKER_URL` | Broker URL (see backend for port) | `mqtt://95.216.208.235:1884` |
 | `DEVICE_ID` | Identifier used in topic and payload | `esp32s3-01` |
 | `ONEWIRE_GPIO` | 1-Wire data pin | `4` |
 | `DS18B20_WATER_ROM` | Pinned ROM (16 hex chars, empty = auto) | `""` |
