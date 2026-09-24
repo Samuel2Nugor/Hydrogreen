@@ -1,4 +1,4 @@
-# MicroHydros
+# Hydrogreen
 
 ## Utveckling av en IoT- och embeddedprototyp
 
