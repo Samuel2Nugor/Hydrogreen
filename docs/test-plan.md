@@ -1,3 +1,30 @@
 # Test plan
 
-> **Status:** Planned. This document will be developed and reviewed by the team.
+## Status
+
+Draft — subject to team review and approval.
+
+## Scope
+
+Tests that verify the raw telemetry → validation → storage → display pipeline described in [`docs/architecture.md`](architecture.md) and the data contract in [`docs/data-contract.md`](data-contract.md).
+
+Tests marked **Executed** below were run against the live deployment (Hetzner, `microhydros-mosquitto` + `microhydros-node-red`, see [`docker/compose.hetzner.yaml`](../docker/compose.hetzner.yaml)) on 2026-09-24, by publishing MQTT messages directly to the broker under a clearly marked `test-docs-verification` device ID and observing Node-RED's `validated`/`rejected` output topics. Tests marked **Requires hardware** need the physical ESP32-S3 and sensors and must be completed by the team before submission.
+
+| Test | How | Expected | Actual |
+| ---- | --- | -------- | ------ |
+| Valid telemetry is validated | Publish a raw message with all four measurements present, in range, and every `sensor_status` set to `ok`. | All four measurements appear on their `telemetry/validated/{measurement}` topics. | **Executed, passed.** All four `validated/*` messages received (`internal_temperature`, `internal_humidity`, `external_temperature`, `water_temperature`). |
+| Sensor reported `not_detected` is rejected independently | Publish a raw message where `internal_sht31` status is `not_detected` and its two measurements are `null`, while the other two sensors stay `ok`. | The two SHT31 measurements are rejected with `reason_code: sensor_not_detected`; the two DS18B20 measurements are still validated. | **Executed, passed.** Both SHT31 fields rejected (`sensor_not_detected`); `external_temperature` and `water_temperature` still validated — a bad sensor does not block the others. |
+| Out-of-plausible-range value is rejected | Publish `internal_temperature_c: 999.0` (outside the configured `[-10, 60]` range) with `sensor_status: ok`, other fields normal. | That one measurement is rejected with `reason_code: out_of_plausible_range`; the other three are still validated. | **Executed, passed.** Rejected with `"internal_temperature_c=999 is outside [-10, 60]"`; the other three measurements validated normally. |
+| Malformed payload is rejected at message level | Publish a non-JSON string to the raw telemetry topic. | One message-level rejection with `reason_code: invalid_json`; no measurement-level output. | **Executed, passed.** Rejected with `reason_code: invalid_json`, no `validated/*` messages produced. |
+| Duplicate/redelivered message is dropped | Publish the same `(boot_id, sequence)` twice (QoS 1 can redeliver). | Second delivery is silently dropped — no duplicate validated or rejected output. | Verified by code review of `docker/node-red/flows/mqtt-validation.json` (`flow.get`/`flow.set` on `last_seq_{device_id}`, step "3. Deduplicate"). Not re-executed live to avoid disturbing the real device's sequence counter. |
+| Firmware reports `not_detected` when a sensor is absent at boot | Power on with a sensor disconnected; read the boot log. | Log shows e.g. `SHT31 @0x44: NOT detected` or `DS18B20 roles: ... MISSING`; subsequent readings report status `not_detected`, value omitted. | Verified by code review of `firmware/esp32s3/main/sensors/sht31.c` (`sht31_init`) and `sensors/ds18b20_roles.c` (`ds18b20_init_sensors`) — both explicitly log and flag absence at boot. **Requires hardware** to confirm on the physical unit. |
+| Firmware reports `read_error` on a failed transaction after detection | Disconnect a previously-detected sensor mid-run, or induce a bus fault. | Next read reports status `read_error`, not `not_detected` (the two are distinguished). | **Requires hardware.** Code path exists (`goto read_error` in `sht31_read`; `ds18b20_get_temperature` failure in `ds18b20_read_sensor`) but needs a live fault to exercise. |
+| Wi-Fi/MQTT disconnect and reconnect | Disconnect the ESP32-S3 from Wi-Fi (or block the broker) for ~1 minute, then restore. | Firmware logs `disconnected — retrying` and keeps retrying; once restored, telemetry resumes without a reflash. | Verified by code review of `firmware/esp32s3/main/wifi.c` (auto-retry on `WIFI_EVENT_STA_DISCONNECTED`) and the MQTT client's built-in reconnect. **Requires hardware** for an end-to-end timed confirmation. |
+| Offline status via LWT | Disconnect the ESP32-S3 abruptly (no clean shutdown). | Mosquitto publishes the device's retained Last-Will `status` payload (`"status":"offline"`) within its keepalive window; Node-RED/Grafana can distinguish "no data" from "device present but idle". | Verified live deployment has the container stack running and the broker reachable (`microhydros-mosquitto` up, port `1884`, checked 2026-09-24). LWT itself is configured in `firmware/esp32s3/main/mqtt.c` (`session.last_will`, retained, QoS 1) but triggering a real abrupt disconnect **requires hardware**. |
+| Backend stack is up and reachable | `docker ps` on the Hetzner host. | All four containers (`microhydros-mosquitto`, `microhydros-node-red`, `microhydros-influxdb`, `microhydros-grafana`) report `Up`. | **Executed, passed**, 2026-09-24: all four containers `Up` (Node-RED `healthy`), Mosquitto on `0.0.0.0:1884->1883`. |
+| Measured values are plausible against a reference | Compare a SHT31/DS18B20 reading against a reference thermometer/hygrometer at the same location. | Readings agree within the sensors' rated accuracy (SHT31 ≈ ±0.3 °C / ±2 %RH, DS18B20 ≈ ±0.5 °C — see `docs/technical-solutions.md`). | **Requires hardware.** Not yet performed. |
+
+## Known gaps
+
+* Every "Requires hardware" row above needs the physical ESP32-S3 with sensors connected — this environment has no ESP-IDF toolchain or attached hardware, so those rows could only be verified by code review or, for the backend/validation logic, by exercising the live broker directly.
+* The `test-docs-verification` device ID used above is a marked test device, kept separate from the real `esp32s3-01` series; it may leave a few InfluxDB points under that device ID that the team can remove via the InfluxDB UI if desired.

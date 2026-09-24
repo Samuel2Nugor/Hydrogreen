@@ -49,7 +49,7 @@ Navigate to **MicroHydros Configuration** and set:
 | ------ | ----------- | ------- |
 | `WIFI_SSID` | Wi-Fi SSID | `your_ssid` |
 | `WIFI_PASSWORD` | Wi-Fi password | `your_password` |
-| `MQTT_BROKER_URL` | Broker URL (see backend for port) | `mqtt://95.216.208.235:1883` |
+| `MQTT_BROKER_URL` | Broker URL (see backend for port) | `mqtt://95.216.208.235:1884` |
 | `DEVICE_ID` | Identifier used in topic and payload | `esp32s3-01` |
 | `ONEWIRE_GPIO` | 1-Wire data pin | `4` |
 | `DS18B20_WATER_ROM` | Pinned ROM (16 hex chars, empty = auto) | `""` |
@@ -137,7 +137,13 @@ firmware/esp32s3/
     ├── CMakeLists.txt      # REQUIRES esp_wifi esp_event esp_netif nvs_flash
     │                       #          driver esp_timer json mqtt onewire_bus ds18b20
     ├── Kconfig.projbuild   # menuconfig options
-    └── main.c              # entry point (app_main)
+    ├── main.c              # entry point (app_main), telemetry task/timer
+    ├── sensor_types.h      # shared sensor_reading_t
+    ├── wifi.c / wifi.h     # WiFi station + reconnect
+    ├── mqtt.c / mqtt.h     # MQTT client, LWT, telemetry payload
+    └── sensors/
+        ├── sht31.c / sht31.h                  # I2C temp + humidity driver
+        └── ds18b20_roles.c / ds18b20_roles.h  # 1-Wire role assignment + reads
 ```
 
 ## Troubleshooting
